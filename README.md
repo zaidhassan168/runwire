@@ -4,6 +4,8 @@
 
 [Live app](https://journey-api-workspace.zaidulhassan.chatgpt.site) · Built for [The WebMCP Challenge](https://webmcp.devpost.com/)
 
+[2:35 judge demo script](DEMO.md)
+
 Runwire combines a focused API client, executable multi-step flows, visible run evidence, and a WebMCP tool surface. A developer can edit and inspect requests in the UI while an agent selects flows, runs them, follows extracted values, diagnoses failures, applies safe repairs, and leaves every result visible on the same page.
 
 ## Why WebMCP
