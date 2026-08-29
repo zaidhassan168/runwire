@@ -2,6 +2,18 @@
 
 Target length: **2 minutes 35 seconds**
 
+## First-time recording recipe (macOS)
+
+1. Close notifications and unrelated tabs, then open only the deployed Runwire Site and the ChatGPT conversation used for WebMCP.
+2. Put the browser at 100% zoom and make the Runwire text, error response, and final `4/4` result readable.
+3. Press **Shift–Command–5**, choose **Record Entire Screen**, then select **Options → Microphone** and choose the microphone you will use.
+4. Record a 20-second sound check. Play it back and confirm your voice is clear before recording the real take.
+5. Start recording, wait two seconds, and follow the timed script below. Speak slowly; silence while the agent works is fine.
+6. Stop from the menu-bar recording icon. Open the video in QuickTime and use **Edit → Trim** only to remove silence at the beginning or end.
+7. Upload the final file to YouTube as **Public**, add the title `Runwire — WebMCP Challenge Demo`, and verify the link in a signed-out/private window.
+
+Do one silent rehearsal before the recorded take. Skip music, transitions, face camera, and animated titles—the product interaction is the proof.
+
 ## Before recording
 
 - Open the deployed Site in ChatGPT's in-app browser.
@@ -62,3 +74,13 @@ End on the flow map with the Runwire name visible.
 - Keep the failure response and the final `4/4` result readable.
 - If a request is slow, cut the wait rather than speeding up the whole recording.
 - Record one clean take under three minutes before adding captions or music.
+
+## Upload checklist
+
+- Duration is below three minutes.
+- Spoken audio is present and understandable.
+- The public Site URL is visible, never localhost.
+- The real `MISSING_IDEMPOTENCY_KEY` failure is readable.
+- The WebMCP repair and the passing `201, 201, 200, 204` rerun are visible.
+- No secrets, personal notifications, third-party trademarks, or copyrighted music appear.
+- The YouTube visibility is **Public**, and the link works while signed out.
