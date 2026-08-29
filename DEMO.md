@@ -47,7 +47,7 @@ Show the final `4/4` result:
 
 > The rerun creates the customer, creates the order, injects both extracted IDs into Get order, and cleans up with Delete order: `201, 201, 200, 204`.
 
-Open **Runs** and show the failed run beside the repaired passing run.
+Open **Runs**, expand the history navigator, select the failed run, then select the repaired passing run.
 
 ### 2:05–2:35 — Close on differentiation
 
