@@ -1,20 +1,20 @@
-# Journey
+# Runwire
 
-**An API workspace built for developers and agents to operate together.**
+**Wire it. Run it. Repair it.**
 
 [Live app](https://journey-api-workspace.zaidulhassan.chatgpt.site) · Built for [The WebMCP Challenge](https://webmcp.devpost.com/)
 
-Journey combines a focused API client, executable multi-step flows, visible run evidence, and a WebMCP tool surface. A developer can edit and inspect requests in the UI while an agent selects flows, runs them, follows extracted values, diagnoses failures, applies safe repairs, and leaves every result visible on the same page.
+Runwire combines a focused API client, executable multi-step flows, visible run evidence, and a WebMCP tool surface. A developer can edit and inspect requests in the UI while an agent selects flows, runs them, follows extracted values, diagnoses failures, applies safe repairs, and leaves every result visible on the same page.
 
 ## Why WebMCP
 
-Traditional browser agents must infer API-client controls from pixels and DOM structure. Journey exposes the actual product operations as structured tools while keeping the UI as the shared source of truth.
+Traditional browser agents must infer API-client controls from pixels and DOM structure. Runwire exposes the actual product operations as structured tools while keeping the UI as the shared source of truth.
 
 That makes this workflow possible:
 
 1. A person opens an API flow and sees its requests, bindings, and expectations.
 2. An agent runs the same visible flow through WebMCP.
-3. Journey extracts response values such as `customerId` or `ticketId` and passes them into later requests.
+3. Runwire extracts response values such as `customerId` or `ticketId` and passes them into later requests.
 4. When a request fails, the agent reads the real response, applies a bounded repair, and reruns the flow.
 5. The person can inspect every request, response, status, duration, extraction, and run in the UI.
 
@@ -40,7 +40,7 @@ That makes this workflow possible:
 
 ## WebMCP tools
 
-Journey registers 15 page tools through `document.modelContext.registerTool`:
+Runwire registers 15 page tools through `document.modelContext.registerTool`:
 
 | Area | Tools |
 | --- | --- |
@@ -67,7 +67,7 @@ Read-only tools are annotated accordingly. Sensitive authentication values are n
 
 ## Safety boundaries
 
-Journey treats arbitrary API execution as a trust boundary:
+Runwire treats arbitrary API execution as a trust boundary:
 
 - Only public HTTP and HTTPS destinations are allowed.
 - Localhost, private-network, and cloud-metadata targets are blocked.
@@ -94,7 +94,7 @@ npm run lint
 npm run build
 ```
 
-To test WebMCP, open Journey in ChatGPT's in-app browser or enable WebMCP testing in Chrome.
+To test WebMCP, open Runwire in ChatGPT's in-app browser or enable WebMCP testing in Chrome.
 
 ## Stack
 
@@ -106,4 +106,4 @@ To test WebMCP, open Journey in ChatGPT's in-app browser or enable WebMCP testin
 
 ## Project status
 
-Journey is a new project created during The WebMCP Challenge submission period. The current build includes the complete executable-flow demo and its WebMCP integration.
+Runwire is a new project created during The WebMCP Challenge submission period. The current build includes the complete executable-flow demo and its WebMCP integration.

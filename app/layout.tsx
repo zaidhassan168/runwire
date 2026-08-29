@@ -13,19 +13,19 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('http://localhost:3000'),
-  title: 'Journey — API workspace',
+  metadataBase: new URL('https://journey-api-workspace.zaidulhassan.chatgpt.site'),
+  title: 'Runwire — Agent-native API workflows',
   description:
-    'Build, run, diagnose, and repair executable API journeys with your agent.',
+    'Wire, run, inspect, and repair executable API flows with your agent.',
   openGraph: {
-    title: 'Journey',
-    description: 'Build, test, and repair APIs with your agent.',
+    title: 'Runwire',
+    description: 'Wire it. Run it. Repair it. API workflows for people and agents.',
     images: ['/og.png'],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Journey',
-    description: 'Build, test, and repair APIs with your agent.',
+    title: 'Runwire',
+    description: 'Wire it. Run it. Repair it. API workflows for people and agents.',
     images: ['/og.png'],
   },
 };
