@@ -1,5 +1,5 @@
 import { getChatGPTUser } from '../../chatgpt-auth';
-import { assertSafePublicUrl } from '../../../lib/api-safety';
+import { assertSafePublicUrl, assertSafeRedirect } from '../../../lib/api-safety';
 
 const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
 const BLOCKED_HEADERS = new Set([
@@ -100,7 +100,7 @@ async function executeWithSafeRedirects(initialUrl: URL, init: RequestInit) {
         const location = response.headers.get('location');
         if (!location) throw new Error('The API returned a redirect without a location.');
         if (redirectCount === MAX_REDIRECTS) throw new Error(`The API redirected more than ${MAX_REDIRECTS} times.`);
-        url = assertSafePublicUrl(new URL(location, url).toString());
+        url = assertSafeRedirect(url, assertSafePublicUrl(new URL(location, url).toString()));
         continue;
       }
 

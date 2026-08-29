@@ -35,6 +35,11 @@ export function assertSafePublicUrl(rawUrl: string): URL {
   return url;
 }
 
+export function assertSafeRedirect(currentUrl: URL, nextUrl: URL): URL {
+  if (currentUrl.origin !== nextUrl.origin) throw new Error('Cross-origin redirects are not followed. Send the final API URL directly.');
+  return nextUrl;
+}
+
 function isBlockedIp(hostname: string): boolean {
   if (hostname.includes(':')) return isBlockedIpv6(hostname);
   const octets = hostname.split('.').map(Number);

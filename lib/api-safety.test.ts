@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assertSafePublicUrl } from './api-safety.ts';
+import { assertSafePublicUrl, assertSafeRedirect } from './api-safety.ts';
 
 test('allows public HTTP APIs', () => {
   assert.equal(assertSafePublicUrl('https://api.example.com/v1/items').hostname, 'api.example.com');
@@ -16,4 +16,10 @@ test('blocks local and metadata destinations', () => {
   ]) {
     assert.throws(() => assertSafePublicUrl(url));
   }
+});
+
+test('blocks cross-origin redirects so credentials cannot follow them', () => {
+  const current = new URL('https://api.example.com/start');
+  assert.equal(assertSafeRedirect(current, new URL('/next', current)).pathname, '/next');
+  assert.throws(() => assertSafeRedirect(current, new URL('https://other.example/next')), /Cross-origin/);
 });
