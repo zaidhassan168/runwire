@@ -17,6 +17,11 @@ export const metadata: Metadata = {
   title: 'Runwire — Agent-native API workflows',
   description:
     'Wire, run, inspect, and repair executable API flows with your agent.',
+  icons: {
+    icon: '/runwire-mark-v1.png',
+    shortcut: '/runwire-mark-v1.png',
+    apple: '/runwire-mark-v1.png',
+  },
   openGraph: {
     title: 'Runwire',
     description: 'Wire it. Run it. Repair it. API workflows for people and agents.',
