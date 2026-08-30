@@ -1,13 +1,4 @@
-import { getChatGPTUser } from '../../chatgpt-auth';
-
-async function requireUser() {
-  const user = await getChatGPTUser();
-  return user ? null : Response.json({ error: 'Sign in to use the demo API.' }, { status: 401 });
-}
-
 export async function GET(request: Request) {
-  const unauthorized = await requireUser();
-  if (unauthorized) return unauthorized;
   const url = new URL(request.url);
   const action = url.searchParams.get('action');
   const id = url.searchParams.get('id');
@@ -23,8 +14,6 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const unauthorized = await requireUser();
-  if (unauthorized) return unauthorized;
   const action = new URL(request.url).searchParams.get('action');
   const payload = await request.json().catch(() => ({})) as Record<string, unknown>;
 
@@ -44,8 +33,6 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const unauthorized = await requireUser();
-  if (unauthorized) return unauthorized;
   const url = new URL(request.url);
   const id = url.searchParams.get('id');
   if (url.searchParams.get('action') !== 'close_ticket' || !id) {
@@ -56,8 +43,6 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const unauthorized = await requireUser();
-  if (unauthorized) return unauthorized;
   const url = new URL(request.url);
   if (url.searchParams.get('action') !== 'delete_order' || !url.searchParams.get('id')) {
     return Response.json({ error: 'orderId is required.' }, { status: 400 });

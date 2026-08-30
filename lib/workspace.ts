@@ -25,6 +25,43 @@ export function protectSensitiveHeaders(headers: [string, string][]): [string, s
   return headers.map(([key, value]) => [key, isSensitiveHeaderKey(key) ? '[protected]' : value]);
 }
 
+export function summarizeAgentToolInput(name: string, input: Record<string, unknown>): string {
+  const text = (key: string) => typeof input[key] === 'string' ? input[key] : '';
+  const number = (key: string) => typeof input[key] === 'number' ? input[key] : null;
+  if (name === 'update_active_request') {
+    const method = text('method');
+    const rawUrl = text('url');
+    let url = '';
+    if (rawUrl) {
+      try {
+        const parsed = new URL(rawUrl, 'https://runwire.local');
+        url = `${rawUrl.startsWith('/') ? parsed.pathname : `${parsed.origin}${parsed.pathname}`}${parsed.searchParams.size ? ` · ${parsed.searchParams.size} params` : ''}`;
+      } catch { url = 'URL updated'; }
+    }
+    const body = text('body');
+    return [method, url, body ? `body ${body.length} chars` : ''].filter(Boolean).join(' · ') || 'Visible request';
+  }
+  if (name === 'select_flow') return text('flowId') || 'Flow';
+  if (name === 'select_journey_step') return text('stepId') || 'Flow step';
+  if (name === 'move_flow_node') return [text('stepId'), number('x'), number('y')].filter((value) => value !== '' && value !== null).join(' · ') || 'Flow node';
+  if (name === 'run_controlled_burst') return `${number('count') ?? 'default'} requests · ${number('concurrency') ?? 'default'} concurrent`;
+  if (name === 'set_environment_variable') return `${text('key') || 'Variable'} · value protected`;
+  return 'No arguments';
+}
+
+export function requiresAgentApproval(name: string): boolean {
+  return name === 'run_active_request' || name === 'run_journey' || name === 'run_controlled_burst';
+}
+
+export function agentToolOutputFailed(name: string, output: unknown): boolean {
+  if (!output || typeof output !== 'object') return requiresAgentApproval(name);
+  const value = output as Record<string, unknown>;
+  if (name === 'run_journey') return !Array.isArray(value.results) || value.results.some((result) => Boolean(result && typeof result === 'object' && (result as Record<string, unknown>).status === 'failed'));
+  if (name === 'run_active_request') return !value.response || typeof value.response !== 'object' || Number((value.response as Record<string, unknown>).status) >= 400;
+  if (name === 'run_controlled_burst') return !value.result || typeof value.result !== 'object' || Number((value.result as Record<string, unknown>).errors) > 0;
+  return false;
+}
+
 export function isRequestAuthConfigured(auth: RequestAuth): boolean {
   if (auth.type === 'none') return false;
   if (auth.type === 'bearer') return Boolean(auth.token.trim());

@@ -7,7 +7,7 @@ const MAX_WORKSPACE_BYTES = 512_000;
 
 export async function GET() {
   const user = await getChatGPTUser();
-  if (!user) return Response.json({ error: 'Sign in to load your workspace.' }, { status: 401 });
+  if (!user) return Response.json({ state: null, updatedAt: null, user: null });
 
   await ensureSchema();
   const [workspace] = await getDb()

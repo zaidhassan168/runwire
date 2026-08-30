@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { autoLayoutJourney, buildJourneyEdges, moveJourneyNode, normalizeJourneyPositions } from './flow.ts';
+import { autoLayoutJourney, buildJourneyEdges, fitJourneyViewport, moveJourneyNode, normalizeJourneyPositions } from './flow.ts';
 import type { JourneyStep } from './journey.ts';
 
 const steps: JourneyStep[] = [
@@ -21,4 +21,14 @@ test('normalizes saved positions and clamps agent movement', () => {
   const positions = normalizeJourneyPositions(steps, [{ id: 'customer', x: -10, y: 9999 }]);
   assert.deepEqual(positions[0], { id: 'customer', x: 24, y: 720 });
   assert.deepEqual(moveJourneyNode(positions, 'order', 410.4, 212.7)[1], { id: 'order', x: 410, y: 213 });
+});
+
+test('fits rendered nodes without changing stored coordinates', () => {
+  const stored = autoLayoutJourney(steps.slice(0, 2));
+  const viewport = fitJourneyViewport(stored);
+  assert.deepEqual(viewport.positions, [{ id: 'customer', x: 32, y: 28 }, { id: 'order', x: 276, y: 28 }]);
+  assert.deepEqual(stored, [{ id: 'customer', x: 32, y: 96 }, { id: 'order', x: 276, y: 96 }]);
+  const moved = fitJourneyViewport(moveJourneyNode(stored, 'customer', 24, 176));
+  assert.deepEqual(moved.positions[1], { id: 'order', x: 276, y: 28 });
+  assert.equal(viewport.height, 280);
 });

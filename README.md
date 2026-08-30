@@ -15,10 +15,10 @@ Traditional browser agents must infer API-client controls from pixels and DOM st
 That makes this workflow possible:
 
 1. A person opens an API flow and sees its requests, bindings, and expectations.
-2. An agent runs the same visible flow through WebMCP.
+2. An agent requests the same visible flow through WebMCP, and Runwire pauses for human approval before network execution.
 3. Runwire extracts response values such as `customerId` or `ticketId` and passes them into later requests.
 4. When a request fails, the agent reads the real response, applies a bounded repair, and reruns the flow.
-5. The person can inspect every request, response, status, duration, extraction, and run in the UI.
+5. The person watches each WebMCP tool call, safe input summary, status, and duration in the live Agent Trace, then inspects every request and response in the UI.
 
 ## Demonstrated flows
 
@@ -54,6 +54,8 @@ Runwire registers 15 page tools through `document.modelContext.registerTool`:
 
 Read-only tools are annotated accordingly. Sensitive authentication values are never returned to agents, and changing a request URL clears protected credentials.
 
+Every invocation is also recorded in the visible Agent Trace. Request bodies, query values, environment values, and tool outputs are excluded from the trace; it shows only safe intent and execution status. Its **Tool calls / API flow** toggle connects `run_journey` to the actual request sequence, extracted-value edges, response codes, and durations. Agent-triggered request, flow, and burst execution waits for explicit human approval in that same trace.
+
 ## API workspace features
 
 - Send GET, POST, PUT, PATCH, and DELETE requests.
@@ -64,6 +66,7 @@ Read-only tools are annotated accordingly. Sensitive authentication values are n
 - Executable flows with JSON-path extraction and variable chaining.
 - Map and list views backed by the same flow model.
 - Per-step request, response, status, duration, and extraction evidence.
+- Live WebMCP Agent Trace with human approval, safe history, and an animated tool-to-API execution flow.
 - Bounded GET burst testing with success rate, p50, p95, and errors.
 - Persistent workspaces and run history through D1.
 
@@ -75,6 +78,7 @@ Runwire treats arbitrary API execution as a trust boundary:
 - Localhost, private-network, and cloud-metadata targets are blocked.
 - Cross-origin redirects are blocked so credentials cannot follow them.
 - Secret-like environment variables and authentication values stay outside persistence and WebMCP responses.
+- Agent-triggered network execution pauses for explicit human approval; denial is recorded in the Agent Trace.
 - Burst testing is GET-only and capped at 50 requests with bounded concurrency.
 
 ## Run locally

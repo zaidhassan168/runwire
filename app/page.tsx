@@ -7,10 +7,10 @@ import {
   WarningCircle, X, XCircle,
 } from '@phosphor-icons/react';
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { autoLayoutJourney, buildJourneyEdges, FLOW_NODE_WIDTH, flowEdgePath, JourneyFlowEdge, JourneyNodePosition, moveJourneyNode, normalizeJourneyPositions } from '../lib/flow';
+import { autoLayoutJourney, buildJourneyEdges, fitJourneyViewport, FLOW_NODE_WIDTH, flowEdgePath, JourneyFlowEdge, JourneyNodePosition, moveJourneyNode, normalizeJourneyPositions } from '../lib/flow';
 import { JourneyStep, JourneyStepResult, runJourneySequence } from '../lib/journey';
 import { ApiCollection, exportPostmanCollection, importPostmanCollection } from '../lib/postman';
-import { applyRequestAuth, EnvironmentVariable, isLocalRequestUrl, isRequestAuthConfigured, isSensitiveVariableKey, mergeEnvironmentVariables, protectSensitiveHeaders, RequestAuth, resolveTemplate, withoutSensitiveHeaders } from '../lib/workspace';
+import { agentToolOutputFailed, applyRequestAuth, EnvironmentVariable, isLocalRequestUrl, isRequestAuthConfigured, isSensitiveVariableKey, mergeEnvironmentVariables, protectSensitiveHeaders, RequestAuth, requiresAgentApproval, resolveTemplate, summarizeAgentToolInput, withoutSensitiveHeaders } from '../lib/workspace';
 
 type View = 'requests' | 'journeys' | 'runs';
 type JourneyMode = 'map' | 'list';
@@ -20,6 +20,9 @@ type ApiResponse = { requestUrl: string; requestBody?: string; status: number; s
 type FlowDefinition = { id: FlowId; name: string; collection: string; description: string; steps: JourneyStep[] };
 type RunRecord = { id: string; flowId: FlowId; flowName: string; steps: JourneyStep[]; startedAt: string; status: 'passed' | 'failed'; durationMs: number; results: JourneyStepResult[] };
 type BurstResult = { count: number; successRate: number; p50: number; p95: number; errors: number };
+type AgentToolEvent = { id: string; name: string; title: string; input: string; status: 'waiting' | 'running' | 'passed' | 'failed' | 'denied'; startedAt: number; durationMs?: number };
+type PendingAgentApproval = Pick<AgentToolEvent, 'id' | 'name' | 'title' | 'input'>;
+type WebMcpTool = Parameters<NonNullable<Document['modelContext']>['registerTool']>[0];
 type SavedWorkspace = {
   activeRequest: { method: string; url: string; body: string; headers?: [string, string][]; name?: string; collection?: string };
   environment: { name: string; variables: EnvironmentVariable[] };
@@ -113,7 +116,13 @@ export default function Home() {
   const [isBurstRunning, setIsBurstRunning] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [workspaceReady, setWorkspaceReady] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<'guest' | 'cloud'>('guest');
   const [userInitials, setUserInitials] = useState('··');
+  const [agentTraceOpen, setAgentTraceOpen] = useState(false);
+  const [agentEvents, setAgentEvents] = useState<AgentToolEvent[]>([]);
+  const [webMcpReady, setWebMcpReady] = useState(false);
+  const [pendingAgentApproval, setPendingAgentApproval] = useState<PendingAgentApproval | null>(null);
+  const agentApprovalResolver = useRef<((approved: boolean) => void) | null>(null);
   const importInput = useRef<HTMLInputElement>(null);
 
   const activeFlow = useMemo(() => buildFlow(activeFlowId, journeyRepaired), [activeFlowId, journeyRepaired]);
@@ -133,10 +142,14 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false;
     void fetch('/api/workspace').then(async (result) => {
-      if (result.status === 401) { window.location.assign('/signin-with-chatgpt?return_to=/'); return; }
-      const payload = await result.json() as { state: SavedWorkspace | null; user?: { displayName: string } };
+      if (result.status === 401) { setUserInitials('G'); return; }
+      if (!result.ok) throw new Error('Workspace could not be loaded.');
+      const payload = await result.json() as { state: SavedWorkspace | null; user?: { displayName: string } | null };
       if (cancelled) return;
-      if (payload.user?.displayName) setUserInitials(payload.user.displayName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase());
+      if (payload.user?.displayName) {
+        setWorkspaceMode('cloud');
+        setUserInitials(payload.user.displayName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase());
+      } else setUserInitials('G');
       const saved = payload.state;
       const isLegacyStarter = saved?.activeRequest?.name === 'Get product 7'
         && saved.activeRequest.url === '{{baseUrl}}/objects/7'
@@ -158,6 +171,24 @@ export default function Home() {
       if (saved?.journeyPositions) setJourneyPositions(normalizeJourneyPositions(savedFlow.steps, saved.journeyPositions));
     }).catch(() => setSaveStatus('error')).finally(() => { if (!cancelled) setWorkspaceReady(true); });
     return () => { cancelled = true; };
+  }, []);
+
+  const requestAgentApproval = useCallback((approval: PendingAgentApproval) => new Promise<boolean>((resolve) => {
+    if (agentApprovalResolver.current) { resolve(false); return; }
+    agentApprovalResolver.current = resolve;
+    setPendingAgentApproval(approval);
+  }), []);
+
+  const respondToAgentApproval = useCallback((approved: boolean) => {
+    const resolve = agentApprovalResolver.current;
+    agentApprovalResolver.current = null;
+    setPendingAgentApproval(null);
+    resolve?.(approved);
+  }, []);
+
+  useEffect(() => () => {
+    agentApprovalResolver.current?.(false);
+    agentApprovalResolver.current = null;
   }, []);
 
   const render = useCallback((input: string, runtime: Record<string, string> = {}) => {
@@ -261,7 +292,31 @@ export default function Home() {
 
   useEffect(() => {
     if (typeof document.modelContext?.registerTool !== 'function') return;
-    const controller = new AbortController(); const emptySchema = { type: 'object', properties: {}, additionalProperties: false }; const register = document.modelContext.registerTool.bind(document.modelContext);
+    const controller = new AbortController(); const emptySchema = { type: 'object', properties: {}, additionalProperties: false }; const rawRegister = document.modelContext.registerTool.bind(document.modelContext);
+    const register = (tool: WebMcpTool, options?: { signal?: AbortSignal }) => rawRegister({ ...tool, execute: async (input) => {
+      const id = crypto.randomUUID(); const startedAt = Date.now(); const title = tool.title ?? tool.name; const summary = summarizeAgentToolInput(tool.name, input); const approvalRequired = requiresAgentApproval(tool.name);
+      setAgentEvents((current) => [{ id, name: tool.name, title, input: summary, status: approvalRequired ? 'waiting' : 'running', startedAt }, ...current].slice(0, 20));
+      setAgentTraceOpen(true);
+      let executionStartedAt = startedAt;
+      if (approvalRequired) {
+        const approved = await requestAgentApproval({ id, name: tool.name, title, input: summary });
+        if (!approved) {
+          setAgentEvents((current) => current.map((event) => event.id === id ? { ...event, status: 'denied', durationMs: Date.now() - startedAt } : event));
+          throw new Error('Action denied by the user.');
+        }
+        executionStartedAt = Date.now();
+        setAgentEvents((current) => current.map((event) => event.id === id ? { ...event, status: 'running' } : event));
+      }
+      try {
+        const output = await tool.execute(input);
+        const failed = agentToolOutputFailed(tool.name, output);
+        setAgentEvents((current) => current.map((event) => event.id === id ? { ...event, status: failed ? 'failed' : 'passed', durationMs: Date.now() - executionStartedAt } : event));
+        return output;
+      } catch (error) {
+        setAgentEvents((current) => current.map((event) => event.id === id ? { ...event, status: 'failed', durationMs: Date.now() - executionStartedAt } : event));
+        throw error;
+      }
+    } }, options);
     void Promise.all([
       register({ name: 'get_active_request', title: 'Get active request', description: 'Read the request currently visible in Runwire. Authentication values stay protected.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: () => ({ method, url, resolvedUrl: render(url), headers: protectSensitiveHeaders(headers), body, expectedStatus, auth: { type: auth.type, configured: isRequestAuthConfigured(auth) } }) }, { signal: controller.signal }),
       register({ name: 'run_active_request', title: 'Run active request', description: 'Run the visible request and update its response panel.', inputSchema: emptySchema, execute: async () => ({ response: await sendRequest() }) }, { signal: controller.signal }),
@@ -278,24 +333,28 @@ export default function Home() {
       register({ name: 'run_controlled_burst', title: 'Run controlled GET burst', description: 'Run 1–50 safe GET requests with bounded concurrency and show success rate, p50, p95, and errors.', inputSchema: { type: 'object', properties: { count: { type: 'integer', minimum: 1, maximum: 50 }, concurrency: { type: 'integer', minimum: 1, maximum: 10 } }, additionalProperties: false }, execute: async (input) => { const count = typeof input.count === 'number' ? input.count : burstCount; const concurrency = typeof input.concurrency === 'number' ? input.concurrency : burstConcurrency; setBurstCount(count); setBurstConcurrency(concurrency); return { result: await runBurst({ count, concurrency }) }; } }, { signal: controller.signal }),
       register({ name: 'get_run_history', title: 'Get run history', description: 'Read recent journey run outcomes and burst metrics.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: () => ({ runs, burst: burstResult }) }, { signal: controller.signal }),
       register({ name: 'set_environment_variable', title: 'Set non-sensitive variable', description: 'Set a non-sensitive environment value visible to the user.', inputSchema: { type: 'object', properties: { key: { type: 'string', pattern: '^[A-Za-z_][A-Za-z0-9_.-]*$', maxLength: 80 }, value: { type: 'string', maxLength: 4096 } }, required: ['key', 'value'], additionalProperties: false }, execute: (input) => { if (typeof input.key !== 'string' || typeof input.value !== 'string') throw new Error('key and value are required.'); if (isSensitiveVariableKey(input.key)) throw new Error('Sensitive variables require the protected human flow.'); setVariables((current) => current.some((item) => item.key === input.key) ? current.map((item) => item.key === input.key ? { key: input.key as string, value: input.value as string } : item) : [...current, { key: input.key, value: input.value } as EnvironmentVariable]); setEnvironmentOpen(true); return { updated: input.key }; } }, { signal: controller.signal }),
-    ]).catch(() => undefined);
+    ]).then(() => setWebMcpReady(true)).catch(() => setWebMcpReady(false));
     return () => controller.abort();
-  }, [activeFlow, applyRepair, auth, autoLayoutFlow, body, burstConcurrency, burstCount, burstResult, expectedStatus, headers, journeyEdges, journeyPositions, journeyRepaired, journeyResults, journeySteps, method, moveFlowNode, render, requestError, response, runBurst, runJourney, runs, selectFlow, selectedStepId, sendRequest, url]);
+  }, [activeFlow, applyRepair, auth, autoLayoutFlow, body, burstConcurrency, burstCount, burstResult, expectedStatus, headers, journeyEdges, journeyPositions, journeyRepaired, journeyResults, journeySteps, method, moveFlowNode, render, requestAgentApproval, requestError, response, runBurst, runJourney, runs, selectFlow, selectedStepId, sendRequest, url]);
 
   const failedJourneyResult = journeyResults.find((result) => result.status === 'failed');
   const selectedResult = journeyResults.find((result) => result.id === selectedStep.id);
   const passedCount = journeyResults.filter((result) => result.status === 'passed').length;
+  const selectWorkspaceView = (nextView: View) => {
+    setNavigatorOpen((open) => nextView === view ? !open : true);
+    setView(nextView);
+  };
 
   return <main className="app-shell">
-    <header className="topbar"><div className="brand"><span className="brand-mark" aria-hidden="true" /><span>Runwire</span><span className="workspace-pill">API workspace</span></div><div className="topbar-center"><span className="presence-dot" />Shared with agent <span className="sync-copy">· changes stay visible both ways</span></div><div className="topbar-actions"><button className="button ghost env-button" type="button" onClick={() => setEnvironmentOpen((open) => !open)}><span className="presence-dot" />{environmentName}<CaretDown size={14} /></button><button className="icon-button" type="button" aria-label="Save workspace" onClick={saveWorkspace} disabled={!workspaceReady || saveStatus === 'saving'}><FloppyDisk size={18} /></button><span className="avatar">{userInitials}</span></div></header>
+    <header className="topbar"><div className="brand"><span className="brand-mark" aria-hidden="true" /><span>Runwire</span><span className="workspace-pill">API workspace</span></div><div className="topbar-center"><span className="presence-dot" />Shared with agent <span className="sync-copy">· changes stay visible both ways</span></div><div className="topbar-actions"><button className="button ghost env-button" type="button" onClick={() => setEnvironmentOpen((open) => !open)}><span className="presence-dot" />{environmentName}<CaretDown size={14} /></button><button className="icon-button" type="button" aria-label={workspaceMode === 'cloud' ? 'Save workspace' : 'Sign in to save workspace'} title={workspaceMode === 'cloud' ? 'Save workspace' : 'Sign in to save workspace'} onClick={saveWorkspace} disabled={!workspaceReady || saveStatus === 'saving'}><FloppyDisk size={18} /></button><span className="avatar" title={workspaceMode === 'cloud' ? 'Cloud workspace' : 'Guest session'}>{userInitials}</span></div></header>
+    <AgentTrace events={agentEvents} open={agentTraceOpen} ready={webMcpReady} pending={pendingAgentApproval} flow={activeFlow} edges={journeyEdges} results={journeyResults} isJourneyRunning={isJourneyRunning} onApprove={() => respondToAgentApproval(true)} onDeny={() => respondToAgentApproval(false)} onSelectStep={(stepId) => { setSelectedStepId(stepId); setJourneyMode('map'); setView('journeys'); }} onToggle={() => setAgentTraceOpen((open) => !open)} />
     {environmentOpen && <EnvironmentPanel name={environmentName} setName={setEnvironmentName} variables={variables} setVariables={setVariables} onClose={() => setEnvironmentOpen(false)} />}
     <div className={`workspace-layout${navigatorOpen ? '' : ' navigator-closed'}${inspectorOpen ? '' : ' inspector-closed'}`}>
-      <nav className="icon-rail" aria-label="Workspace sections"><div className="rail-main"><RailButton label="Requests" active={view === 'requests'} onClick={() => setView('requests')}><TerminalWindow size={20} /></RailButton><RailButton label="Flows" active={view === 'journeys'} onClick={() => setView('journeys')}><BracketsCurly size={20} /></RailButton><RailButton label="Runs" active={view === 'runs'} onClick={() => setView('runs')}><Pulse size={20} /></RailButton></div><RailButton label="Environment" onClick={() => setEnvironmentOpen(true)}><GearSix size={20} /></RailButton></nav>
+      <nav className="icon-rail" aria-label="Workspace sections"><div className="rail-main"><RailButton label="Requests" active={view === 'requests'} onClick={() => selectWorkspaceView('requests')}><TerminalWindow size={20} /></RailButton><RailButton label="Flows" active={view === 'journeys'} onClick={() => selectWorkspaceView('journeys')}><BracketsCurly size={20} /></RailButton><RailButton label="Runs" active={view === 'runs'} onClick={() => selectWorkspaceView('runs')}><Pulse size={20} /></RailButton></div><RailButton label="Environment" onClick={() => setEnvironmentOpen(true)}><GearSix size={20} /></RailButton></nav>
       <Navigator view={view} filterQuery={filterQuery} setFilterQuery={setFilterQuery} visibleCollections={visibleCollections} requestName={requestName} collectionName={collectionName} openCollectionRequest={openCollectionRequest} importInput={importInput} importCollection={importCollection} exportActiveCollection={exportActiveCollection} onClose={() => setNavigatorOpen(false)} activeFlowId={activeFlowId} onSelectFlow={selectFlow} runs={runs} selectedRun={selectedRun} setSelectedRunId={setSelectedRunId} />
-      {!navigatorOpen && <button className="edge-toggle left" type="button" aria-label="Open navigator" onClick={() => setNavigatorOpen(true)}><List size={16} /></button>}
       <section className="main-canvas">
-        {view === 'requests' && <RequestWorkspace method={method} setMethod={setMethod} url={url} setUrl={setUrl} body={body} setBody={setBody} headers={headers} setHeaders={setHeaders} auth={auth} setAuth={setAuth} requestName={requestName} setRequestName={setRequestName} collectionName={collectionName} activeTab={activeEditorTab} setActiveTab={setActiveEditorTab} expectedStatus={expectedStatus} setExpectedStatus={setExpectedStatus} maxDurationMs={maxDurationMs} setMaxDurationMs={setMaxDurationMs} response={response} responseTab={responseTab} setResponseTab={setResponseTab} formattedBody={formattedBody} requestError={requestError} assertionResults={assertionResults} isSending={isSending} workspaceReady={workspaceReady} onSend={sendRequest} saveStatus={saveStatus} />}
-        {view === 'journeys' && <JourneyBuilder flow={activeFlow} edges={journeyEdges} positions={journeyPositions} results={journeyResults} selectedStepId={selectedStep.id} setSelectedStepId={setSelectedStepId} moveNode={moveFlowNode} mode={journeyMode} setMode={setJourneyMode} autoLayout={autoLayoutFlow} isRunning={isJourneyRunning} passedCount={passedCount} onRun={runJourney} repaired={journeyRepaired} />}
+        {view === 'requests' && <RequestWorkspace method={method} setMethod={setMethod} url={url} setUrl={setUrl} body={body} setBody={setBody} headers={headers} setHeaders={setHeaders} auth={auth} setAuth={setAuth} requestName={requestName} setRequestName={setRequestName} collectionName={collectionName} activeTab={activeEditorTab} setActiveTab={setActiveEditorTab} expectedStatus={expectedStatus} setExpectedStatus={setExpectedStatus} maxDurationMs={maxDurationMs} setMaxDurationMs={setMaxDurationMs} response={response} responseTab={responseTab} setResponseTab={setResponseTab} formattedBody={formattedBody} requestError={requestError} assertionResults={assertionResults} isSending={isSending} workspaceReady={workspaceReady} workspaceMode={workspaceMode} onSend={sendRequest} saveStatus={saveStatus} />}
+        {view === 'journeys' && <JourneyBuilder flow={activeFlow} edges={journeyEdges} positions={journeyPositions} results={journeyResults} selectedStepId={selectedStep.id} setSelectedStepId={setSelectedStepId} moveNode={moveFlowNode} mode={journeyMode} setMode={setJourneyMode} autoLayout={autoLayoutFlow} isRunning={isJourneyRunning} passedCount={passedCount} onRun={runJourney} repaired={journeyRepaired} inspectorOpen={inspectorOpen} onInspectFailure={() => { if (failedJourneyResult) setSelectedStepId(failedJourneyResult.id); setInspectorOpen(true); }} />}
         {view === 'runs' && <RunResults run={selectedRun} burstCount={burstCount} setBurstCount={setBurstCount} burstConcurrency={burstConcurrency} setBurstConcurrency={setBurstConcurrency} burstResult={burstResult} isBurstRunning={isBurstRunning} onBurst={() => runBurst()} onOpenJourney={() => setView('journeys')} />}
       </section>
       <aside className="inspector"><div className="panel-title-row"><div><p className="eyebrow">Inspector</p><h2>{view === 'requests' ? 'Environment' : view === 'journeys' ? 'Node details' : 'Run details'}</h2></div><button className="icon-button compact" type="button" aria-label="Collapse inspector" onClick={() => setInspectorOpen(false)}><X size={16} /></button></div>{view === 'requests' && <RequestInspector variables={variables} response={response} />}{view === 'journeys' && <StepInspector step={selectedStep} result={selectedResult} failed={failedJourneyResult?.id === selectedStep.id} repaired={journeyRepaired} onRepair={applyRepair} />}{view === 'runs' && <RunInspector run={selectedRun} burst={burstResult} />}</aside>
@@ -305,6 +364,35 @@ export default function Home() {
 }
 
 function RailButton({ label, active = false, onClick, children }: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode }) { return <button className={`rail-button${active ? ' active' : ''}`} type="button" onClick={onClick} aria-label={label} aria-current={active ? 'page' : undefined}>{children}<span>{label}</span></button>; }
+
+function AgentTrace({ events, open, ready, pending, flow, edges, results, isJourneyRunning, onApprove, onDeny, onSelectStep, onToggle }: { events: AgentToolEvent[]; open: boolean; ready: boolean; pending: PendingAgentApproval | null; flow: FlowDefinition; edges: JourneyFlowEdge[]; results: JourneyStepResult[]; isJourneyRunning: boolean; onApprove: () => void; onDeny: () => void; onSelectStep: (stepId: string) => void; onToggle: () => void }) {
+  const [mode, setMode] = useState<'calls' | 'flow'>('calls');
+  const latest = events[0];
+  const journeyEvent = events.find((event) => event.name === 'run_journey');
+  const compactOpen = open && !pending && mode === 'calls' && events.length > 0 && events.length <= 2;
+  const statusIcon = (event: AgentToolEvent) => event.status === 'waiting' ? <WarningCircle size={14} weight="fill" /> : event.status === 'running' ? <ArrowsClockwise className="spin" size={14} /> : event.status === 'passed' ? <CheckCircle size={14} weight="fill" /> : <XCircle size={14} weight="fill" />;
+  const statusCopy = (event: AgentToolEvent) => event.status === 'waiting' ? 'Approval required' : event.status === 'running' ? 'Running' : event.status === 'denied' ? 'Denied' : event.status === 'failed' ? `Failed · ${event.durationMs ?? 0} ms` : `${event.durationMs ?? 0} ms`;
+  return <section className={`agent-trace${open || pending ? ' open' : ''}${compactOpen ? ' compact-open' : ''}${pending ? ' approval-open' : ''}`} style={compactOpen ? { flexBasis: 78 + events.length * 36 } : undefined} aria-label="WebMCP tool calls">
+    <button className="agent-trace-bar" type="button" onClick={() => { if (!pending) onToggle(); }} aria-expanded={open || Boolean(pending)}>
+      <span className="agent-trace-label"><Robot size={15} />Agent trace</span>
+      <span className={`agent-trace-latest ${latest?.status ?? (ready ? 'ready' : 'unavailable')}`} aria-live="polite">{latest ? <>{statusIcon(latest)}<strong>{latest.title}</strong><code>{latest.name}</code><span>{statusCopy(latest)}</span></> : <><span className={ready ? 'presence-dot' : 'agent-trace-offline'} /><strong>{ready ? 'WebMCP ready' : 'WebMCP unavailable'}</strong><span>{ready ? 'Tool calls will appear here' : 'Open in a supported browser'}</span></>}</span>
+      <span className="agent-trace-count">{events.length ? `${events.length} call${events.length === 1 ? '' : 's'}` : ready ? '15 tools' : 'Not connected'}</span><CaretDown className="agent-trace-caret" size={14} />
+    </button>
+    <div className="agent-trace-history">
+      {pending && <div className="agent-approval" role="alert"><WarningCircle size={18} weight="fill" /><span><strong>Approval required</strong><span>{pending.title} · {pending.input}</span></span><div><button className="button ghost" type="button" onClick={onDeny}>Deny</button><button className="button primary" type="button" onClick={onApprove}><Play size={14} weight="fill" />Approve &amp; run</button></div></div>}
+      <div className="agent-trace-tabs"><div className="segmented" role="group" aria-label="Agent trace view"><button className={mode === 'calls' ? 'active' : ''} type="button" onClick={() => setMode('calls')}>Tool calls</button><button className={mode === 'flow' ? 'active' : ''} type="button" onClick={() => setMode('flow')}>API flow</button></div><span>{mode === 'calls' ? 'Safe WebMCP history' : `${flow.steps.length} executable requests`}</span></div>
+      {mode === 'calls' ? <div className="agent-trace-calls">{events.length ? events.filter((event) => event.id !== pending?.id).map((event) => <div className={`agent-trace-row ${event.status}`} key={event.id}>{statusIcon(event)}<span><strong>{event.title}</strong><code>{event.name}</code></span><span className="agent-trace-input">{event.input}</span><span className="agent-trace-duration">{statusCopy(event)}</span></div>) : !pending && <div className="agent-trace-empty"><Robot size={18} /><span><strong>Waiting for the agent</strong>Run a WebMCP tool and its safe execution evidence will appear here.</span></div>}</div> : <div className="agent-execution-flow" aria-label={`${flow.name} WebMCP execution path`}>
+        <div className={`agent-flow-tool ${journeyEvent?.status ?? 'ready'}`}><Robot size={16} /><span><small>WebMCP tool</small><strong>run_journey</strong></span>{journeyEvent ? statusIcon(journeyEvent) : <span className="agent-flow-ready">Ready</span>}</div>
+        {flow.steps.map((step, index) => {
+          const result = results.find((candidate) => candidate.id === step.id);
+          const running = isJourneyRunning && index === results.length;
+          const edge = index === 0 ? null : edges.find((candidate) => candidate.to === step.id);
+          return <div className="agent-flow-segment" key={step.id}><span className={`agent-flow-link${running ? ' running' : ''}`}><small>{index === 0 ? 'invokes' : edge?.label || 'then'}</small><span /></span><button className={`agent-flow-api${result ? ` ${result.status}` : ''}${running ? ' running' : ''}`} type="button" onClick={() => onSelectStep(step.id)}><span><span className={methodClass(step.method)}>{step.method}</span><small>{result ? `${result.actualStatus} · ${result.durationMs} ms` : running ? 'Calling…' : `Expect ${step.expectedStatus}`}</small></span><strong>{step.label}</strong><code>{result?.requestUrl ?? step.url}</code></button></div>;
+        })}
+      </div>}
+    </div>
+  </section>;
+}
 
 function Navigator({ view, filterQuery, setFilterQuery, visibleCollections, requestName, collectionName, openCollectionRequest, importInput, importCollection, exportActiveCollection, onClose, activeFlowId, onSelectFlow, runs, selectedRun, setSelectedRunId }: { view: View; filterQuery: string; setFilterQuery: (value: string) => void; visibleCollections: ApiCollection[]; requestName: string; collectionName: string; openCollectionRequest: (collection: ApiCollection, id: string) => void; importInput: React.RefObject<HTMLInputElement | null>; importCollection: (event: ChangeEvent<HTMLInputElement>) => void; exportActiveCollection: () => void; onClose: () => void; activeFlowId: FlowId; onSelectFlow: (id: FlowId) => void; runs: RunRecord[]; selectedRun: RunRecord | null; setSelectedRunId: (id: string) => void }) {
   return <aside className="navigator"><div className="panel-title-row"><div><p className="eyebrow">Workspace</p><h2>{view === 'requests' ? 'Collections' : view === 'journeys' ? 'Flows' : 'Run history'}</h2></div><button className="icon-button compact" type="button" aria-label="Collapse navigator" onClick={onClose}><List size={17} /></button></div>
@@ -323,23 +411,24 @@ type RequestWorkspaceProps = {
   headers: [string, string][]; setHeaders: React.Dispatch<React.SetStateAction<[string, string][]>>; auth: RequestAuth; setAuth: React.Dispatch<React.SetStateAction<RequestAuth>>; requestName: string; setRequestName: (value: string) => void;
   collectionName: string; activeTab: EditorTab; setActiveTab: (tab: EditorTab) => void; expectedStatus: number; setExpectedStatus: (value: number) => void;
   maxDurationMs: number; setMaxDurationMs: (value: number) => void; response: ApiResponse | null; responseTab: 'Body' | 'Headers'; setResponseTab: (tab: 'Body' | 'Headers') => void;
-  formattedBody: string; requestError: string; assertionResults: { label: string; passed: boolean }[]; isSending: boolean; workspaceReady: boolean; onSend: (event?: FormEvent) => Promise<ApiResponse | null>; saveStatus: string;
+  formattedBody: string; requestError: string; assertionResults: { label: string; passed: boolean }[]; isSending: boolean; workspaceReady: boolean; workspaceMode: 'guest' | 'cloud'; onSend: (event?: FormEvent) => Promise<ApiResponse | null>; saveStatus: string;
 };
 function RequestWorkspace(props: RequestWorkspaceProps) {
   const tabs: EditorTab[] = ['Params', 'Auth', 'Headers', 'Body', 'Tests'];
   return <div className="request-screen">
     <div className="screen-heading"><div><p className="breadcrumb">{props.collectionName} / Request</p><input className="title-input" value={props.requestName} onChange={(event) => props.setRequestName(event.target.value)} aria-label="Request name" /></div><span className="agent-badge"><Robot size={14} />15 agent tools</span></div>
     <form className="request-composer" onSubmit={props.onSend}><select className={methodClass(props.method)} value={props.method} onChange={(event) => props.setMethod(event.target.value)} aria-label="HTTP method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select><input className="url-input" value={props.url} onChange={(event) => props.setUrl(event.target.value)} aria-label="Request URL" spellCheck={false} /><button className="button primary send" type="submit" disabled={!props.workspaceReady || props.isSending}>{props.isSending ? <ArrowsClockwise className="spin" size={18} /> : <Play size={17} weight="fill" />}{props.isSending ? 'Sending' : 'Send'}</button></form>
-    <p className="shortcut">⌘ Enter to send · {props.saveStatus === 'saved' ? 'workspace saved' : 'local draft'}</p>
-    <div className="tab-row" role="tablist">{tabs.map((tab) => <button className={props.activeTab === tab ? 'active' : ''} type="button" role="tab" aria-selected={props.activeTab === tab} onClick={() => props.setActiveTab(tab)} key={tab}>{tab}{tab === 'Headers' && <span>{props.headers.length}</span>}{tab === 'Auth' && props.auth.type !== 'none' && <span>1</span>}</button>)}</div>
-    <div className="editor-card">
-      {props.activeTab === 'Headers' && <div className="key-value-table"><div className="table-head"><span>Header</span><span>Value</span><span /></div>{props.headers.map(([key, value], index) => <div className="table-row" key={`${key}-${index}`}><input value={key} onChange={(event) => props.setHeaders((current) => current.map((item, itemIndex) => itemIndex === index ? [event.target.value, item[1]] : item))} aria-label={`Header ${index + 1} name`} /><input value={value} onChange={(event) => props.setHeaders((current) => current.map((item, itemIndex) => itemIndex === index ? [item[0], event.target.value] : item))} aria-label={`Header ${index + 1} value`} /><button className="icon-button compact danger" type="button" aria-label={`Remove ${key}`} onClick={() => props.setHeaders((current) => current.filter((_, itemIndex) => itemIndex !== index))}><Trash size={14} /></button></div>)}<button className="text-button table-add" type="button" onClick={() => props.setHeaders((current) => [...current, ['', '']])}><Plus size={14} />Add header</button></div>}
-      {props.activeTab === 'Auth' && <AuthEditor auth={props.auth} setAuth={props.setAuth} />}
-      {props.activeTab === 'Body' && <textarea className="code-editor" value={props.body} onChange={(event) => props.setBody(event.target.value)} aria-label="Request body" placeholder="No request body" spellCheck={false} />}
-      {props.activeTab === 'Params' && <div className="empty-state mini"><SlidersHorizontal size={22} /><strong>Query parameters live in the URL</strong><span>Use ?key=value and variables like {'{{orderId}}'}.</span></div>}
-      {props.activeTab === 'Tests' && <div className="test-fields"><label>Expected status<input type="number" min="100" max="599" value={props.expectedStatus} onChange={(event) => props.setExpectedStatus(Number(event.target.value))} /></label><label>Maximum duration<span className="input-suffix"><input type="number" min="1" max="60000" value={props.maxDurationMs} onChange={(event) => props.setMaxDurationMs(Number(event.target.value))} /><span>ms</span></span></label></div>}
+    <p className="shortcut">⌘ Enter to send · {props.saveStatus === 'saved' ? 'workspace saved' : props.workspaceMode === 'cloud' ? 'cloud draft' : 'guest session · sign in to save'}</p>
+    <div className="request-main-grid"><section className="request-editor-pane"><div className="tab-row" role="tablist">{tabs.map((tab) => <button className={props.activeTab === tab ? 'active' : ''} type="button" role="tab" aria-selected={props.activeTab === tab} onClick={() => props.setActiveTab(tab)} key={tab}>{tab}{tab === 'Headers' && <span>{props.headers.length}</span>}{tab === 'Auth' && props.auth.type !== 'none' && <span>1</span>}</button>)}</div>
+      <div className="editor-card">
+        {props.activeTab === 'Headers' && <div className="key-value-table"><div className="table-head"><span>Header</span><span>Value</span><span /></div>{props.headers.map(([key, value], index) => <div className="table-row" key={`${key}-${index}`}><input value={key} onChange={(event) => props.setHeaders((current) => current.map((item, itemIndex) => itemIndex === index ? [event.target.value, item[1]] : item))} aria-label={`Header ${index + 1} name`} /><input value={value} onChange={(event) => props.setHeaders((current) => current.map((item, itemIndex) => itemIndex === index ? [item[0], event.target.value] : item))} aria-label={`Header ${index + 1} value`} /><button className="icon-button compact danger" type="button" aria-label={`Remove ${key}`} onClick={() => props.setHeaders((current) => current.filter((_, itemIndex) => itemIndex !== index))}><Trash size={14} /></button></div>)}<button className="text-button table-add" type="button" onClick={() => props.setHeaders((current) => [...current, ['', '']])}><Plus size={14} />Add header</button></div>}
+        {props.activeTab === 'Auth' && <AuthEditor auth={props.auth} setAuth={props.setAuth} />}
+        {props.activeTab === 'Body' && <textarea className="code-editor" value={props.body} onChange={(event) => props.setBody(event.target.value)} aria-label="Request body" placeholder="No request body" spellCheck={false} />}
+        {props.activeTab === 'Params' && <div className="empty-state mini"><SlidersHorizontal size={22} /><strong>Query parameters live in the URL</strong><span>Use ?key=value and variables like {'{{orderId}}'}.</span></div>}
+        {props.activeTab === 'Tests' && <div className="test-fields"><label>Expected status<input type="number" min="100" max="599" value={props.expectedStatus} onChange={(event) => props.setExpectedStatus(Number(event.target.value))} /></label><label>Maximum duration<span className="input-suffix"><input type="number" min="1" max="60000" value={props.maxDurationMs} onChange={(event) => props.setMaxDurationMs(Number(event.target.value))} /><span>ms</span></span></label></div>}
+      </div></section>
+      <ResponsePanel response={props.response} responseTab={props.responseTab} setResponseTab={props.setResponseTab} formattedBody={props.formattedBody} requestError={props.requestError} assertions={props.assertionResults} />
     </div>
-    <ResponsePanel response={props.response} responseTab={props.responseTab} setResponseTab={props.setResponseTab} formattedBody={props.formattedBody} requestError={props.requestError} assertions={props.assertionResults} />
   </div>;
 }
 
@@ -350,20 +439,27 @@ function AuthEditor({ auth, setAuth }: { auth: RequestAuth; setAuth: React.Dispa
 
 function ResponsePanel({ response, responseTab, setResponseTab, formattedBody, requestError, assertions }: { response: ApiResponse | null; responseTab: 'Body' | 'Headers'; setResponseTab: (tab: 'Body' | 'Headers') => void; formattedBody: string; requestError: string; assertions: { label: string; passed: boolean }[] }) {
   const content = requestError || (responseTab === 'Headers' && response ? response.headers.map(([key, value]) => `${key}: ${value}`).join('\n') : formattedBody) || 'Send a request to inspect the response body, headers, timing, and assertions.';
-  return <section className="response-card"><div className="response-header"><div className="response-title"><h2>Response</h2>{response && <><span className={`status-chip ${response.status >= 400 ? 'failed' : 'passed'}`}>{response.status} {response.statusText}</span><span><Clock size={13} />{response.durationMs} ms</span><span>{response.sizeBytes} B</span></>}{requestError && <span className="status-chip failed">Request failed</span>}</div>{response && <div className="segmented"><button className={responseTab === 'Body' ? 'active' : ''} type="button" onClick={() => setResponseTab('Body')}>Body</button><button className={responseTab === 'Headers' ? 'active' : ''} type="button" onClick={() => setResponseTab('Headers')}>Headers</button></div>}</div><pre className={requestError ? 'response-body error' : 'response-body'}><code>{content}</code></pre>{assertions.length > 0 && <div className="assertion-row">{assertions.map((assertion) => <span className={assertion.passed ? 'passed' : 'failed'} key={assertion.label}>{assertion.passed ? <Check size={13} /> : <X size={13} />}{assertion.label}</span>)}</div>}</section>;
+  const empty = !response && !requestError;
+  return <section className="response-card"><div className="response-header"><div className="response-title"><h2>Response</h2>{response && <><span className={`status-chip ${response.status >= 400 ? 'failed' : 'passed'}`}>{response.status} {response.statusText}</span><span><Clock size={13} />{response.durationMs} ms</span><span>{response.sizeBytes} B</span></>}{requestError && <span className="status-chip failed">Request failed</span>}</div>{response && <div className="segmented"><button className={responseTab === 'Body' ? 'active' : ''} type="button" onClick={() => setResponseTab('Body')}>Body</button><button className={responseTab === 'Headers' ? 'active' : ''} type="button" onClick={() => setResponseTab('Headers')}>Headers</button></div>}</div><pre className={`response-body${requestError ? ' error' : ''}${empty ? ' empty' : ''}`}><code>{content}</code></pre>{assertions.length > 0 && <div className="assertion-row">{assertions.map((assertion) => <span className={assertion.passed ? 'passed' : 'failed'} key={assertion.label}>{assertion.passed ? <Check size={13} /> : <X size={13} />}{assertion.label}</span>)}</div>}</section>;
 }
 
-function JourneyBuilder({ flow, edges, positions, results, selectedStepId, setSelectedStepId, moveNode, mode, setMode, autoLayout, isRunning, passedCount, onRun, repaired }: { flow: FlowDefinition; edges: JourneyFlowEdge[]; positions: JourneyNodePosition[]; results: JourneyStepResult[]; selectedStepId: string; setSelectedStepId: (id: string) => void; moveNode: (id: string, x: number, y: number) => void; mode: JourneyMode; setMode: (mode: JourneyMode) => void; autoLayout: () => void; isRunning: boolean; passedCount: number; onRun: () => Promise<JourneyStepResult[]>; repaired: boolean }) {
+function JourneyBuilder({ flow, edges, positions, results, selectedStepId, setSelectedStepId, moveNode, mode, setMode, autoLayout, isRunning, passedCount, onRun, repaired, inspectorOpen, onInspectFailure }: { flow: FlowDefinition; edges: JourneyFlowEdge[]; positions: JourneyNodePosition[]; results: JourneyStepResult[]; selectedStepId: string; setSelectedStepId: (id: string) => void; moveNode: (id: string, x: number, y: number) => void; mode: JourneyMode; setMode: (mode: JourneyMode) => void; autoLayout: () => void; isRunning: boolean; passedCount: number; onRun: () => Promise<JourneyStepResult[]>; repaired: boolean; inspectorOpen: boolean; onInspectFailure: () => void }) {
   const steps = flow.steps;
   const extractionCount = steps.reduce((total, step) => total + (step.extracts?.length ?? 0), 0);
+  const failed = results.find((result) => result.status === 'failed');
+  const failedStep = steps.find((step) => step.id === failed?.id);
+  const failureCode = failed?.responseBody?.includes('MISSING_IDEMPOTENCY_KEY') ? 'MISSING_IDEMPOTENCY_KEY' : failed?.error || (failed ? `HTTP ${failed.actualStatus}` : '');
+  const completed = results.length === steps.length && !failed;
+  const stateLabel = failed ? 'Needs repair' : isRunning ? 'Running' : completed ? 'Passed' : results.length ? 'Partial run' : 'Ready';
   return <div className="journey-screen flow-screen">
-    <div className="screen-heading"><div><p className="breadcrumb">Flows / {flow.collection}</p><h1>{flow.name}</h1><p className="screen-subtitle">{flow.description} Every request and response remains inspectable in List.</p></div><div className="heading-meta"><span className="agent-badge"><Robot size={14} />Shared live graph</span><button className="button primary" type="button" onClick={onRun} disabled={isRunning}>{isRunning ? <ArrowsClockwise className="spin" size={17} /> : <Play size={16} weight="fill" />}{isRunning ? 'Running' : 'Run flow'}</button></div></div>
-    <div className="journey-summary"><div><span className="summary-value">{steps.length}</span><span>executable nodes</span></div><div><span className="summary-value">{extractionCount}</span><span>data bindings</span></div><div><span className="summary-value">{results.length ? `${passedCount}/${steps.length}` : '—'}</span><span>latest result</span></div><div className="progress"><span style={{ width: `${(passedCount / steps.length) * 100}%` }} /></div></div>
-    <div className="flow-toolbar"><div className="segmented" role="group" aria-label="Workflow view"><button className={mode === 'map' ? 'active' : ''} type="button" onClick={() => setMode('map')}>Map</button><button className={mode === 'list' ? 'active' : ''} type="button" onClick={() => setMode('list')}>List</button></div><button className="button ghost" type="button" onClick={autoLayout}><ArrowsClockwise size={15} />Auto layout</button></div>
-    {mode === 'map'
-      ? <FlowCanvas steps={steps} edges={edges} positions={positions} results={results} selectedStepId={selectedStepId} setSelectedStepId={setSelectedStepId} moveNode={moveNode} isRunning={isRunning} />
-      : <FlowList key={flow.id} steps={steps} results={results} selectedStepId={selectedStepId} setSelectedStepId={setSelectedStepId} isRunning={isRunning} />}
-    <div className="journey-footer"><span><Pulse size={15} />Execution stops on failed status or extraction</span><span>{flow.id === 'checkout' ? (repaired ? 'Repair applied · ready to rerun' : '1 agent repair available') : 'Request and response evidence captured'}</span></div>
+    <header className="flow-command-bar"><div className="flow-title-block"><p className="breadcrumb">Flows / {flow.collection}</p><div className="flow-title-line"><h1>{flow.name}</h1><span className={`flow-state${failed ? ' failed' : isRunning ? ' running' : completed ? ' passed' : ''}`}><span />{stateLabel}</span></div><p className="screen-subtitle">{flow.description}</p><div className="flow-meta-line"><span><strong>{steps.length}</strong> requests</span><span><strong>{extractionCount}</strong> bindings</span><span><strong>{results.length ? `${passedCount}/${steps.length}` : '—'}</strong> last run</span></div></div><button className="button primary flow-run-button" type="button" onClick={onRun} disabled={isRunning}>{isRunning ? <ArrowsClockwise className="spin" size={17} /> : <Play size={16} weight="fill" />}{isRunning ? 'Running flow' : 'Run flow'}</button></header>
+    <section className="flow-workbench" aria-label="API flow workbench">
+      <div className="flow-toolbar"><div className="segmented" role="group" aria-label="Workflow view"><button className={mode === 'map' ? 'active' : ''} type="button" onClick={() => setMode('map')}>Canvas</button><button className={mode === 'list' ? 'active' : ''} type="button" onClick={() => setMode('list')}>Evidence</button></div><span className="flow-toolbar-context"><span className="presence-dot" />Agent-synced workspace</span><button className="button ghost" type="button" onClick={autoLayout}><ArrowsClockwise size={15} />Arrange</button></div>
+      {mode === 'map'
+        ? <FlowCanvas steps={steps} edges={edges} positions={positions} results={results} selectedStepId={selectedStepId} setSelectedStepId={setSelectedStepId} moveNode={moveNode} isRunning={isRunning} />
+        : <FlowList key={flow.id} steps={steps} results={results} selectedStepId={selectedStepId} setSelectedStepId={setSelectedStepId} isRunning={isRunning} />}
+      <div className={`journey-footer${failed ? ' failed' : isRunning ? ' running' : completed ? ' passed' : ''}`}><span>{failed ? <WarningCircle size={18} weight="fill" /> : isRunning ? <ArrowsClockwise className="spin" size={17} /> : completed ? <CheckCircle size={18} weight="fill" /> : <Pulse size={17} />}<span><strong>{failed ? `${failedStep?.label ?? 'Request'} failed` : isRunning ? 'Executing requests in sequence' : completed ? 'Flow completed' : 'Execution stops on the first failed assertion'}</strong>{failed ? <code>{failureCode}</code> : <small>{repaired ? 'Repair applied · ready to rerun' : 'Responses and extracted variables stay visible here.'}</small>}</span></span>{failed ? inspectorOpen ? <span className="flow-footer-open"><SlidersHorizontal size={15} />Repair ready in inspector</span> : <button className="flow-footer-action" type="button" onClick={onInspectFailure}><Lightning size={16} weight="fill" />Inspect &amp; repair</button> : <span className="flow-footer-progress"><strong>{passedCount}</strong> / {steps.length} passed</span>}</div>
+    </section>
   </div>;
 }
 
@@ -380,13 +476,14 @@ function FlowList({ steps, results, selectedStepId, setSelectedStepId, isRunning
 
 function FlowCanvas({ steps, edges, positions, results, selectedStepId, setSelectedStepId, moveNode, isRunning }: { steps: JourneyStep[]; edges: JourneyFlowEdge[]; positions: JourneyNodePosition[]; results: JourneyStepResult[]; selectedStepId: string; setSelectedStepId: (id: string) => void; moveNode: (id: string, x: number, y: number) => void; isRunning: boolean }) {
   const drag = useRef<{ id: string; pointerId: number; startX: number; startY: number; x: number; y: number } | null>(null);
-  const byId = new Map(positions.map((position) => [position.id, position]));
-  const width = Math.max(860, ...positions.map(({ x }) => x + 220));
+  const viewport = fitJourneyViewport(positions);
+  const byId = new Map(viewport.positions.map((position) => [position.id, position]));
+  const storedById = new Map(positions.map((position) => [position.id, position]));
   return <section className="flow-map" aria-label="Executable API workflow">
-    <div className="flow-map-stage" style={{ width }}>
-      <svg className="flow-map-edges" width={width} height="560" aria-hidden="true"><defs><marker id="flow-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" /></marker></defs>{edges.map((edge, index) => { const from = byId.get(edge.from); const to = byId.get(edge.to); if (!from || !to) return null; const sourceResult = results.find((result) => result.id === edge.from); const running = isRunning && index === results.length - 1; return <g className={`flow-map-edge ${sourceResult?.status ?? (running ? 'running' : 'idle')}`} key={edge.id}><path d={flowEdgePath(from, to)} /><text x={(from.x + FLOW_NODE_WIDTH + to.x) / 2} y={(from.y + to.y) / 2 + 42}>{edge.label}</text></g>; })}</svg>
-      {steps.map((step, index) => { const position = byId.get(step.id); if (!position) return null; const result = results.find((candidate) => candidate.id === step.id); const running = isRunning && index === results.length; return <button className={`flow-node${selectedStepId === step.id ? ' selected' : ''}${result ? ` ${result.status}` : ''}${running ? ' running' : ''}`} type="button" style={{ transform: `translate(${position.x}px, ${position.y}px)` }} key={step.id} onClick={() => setSelectedStepId(step.id)} onPointerDown={(event) => { setSelectedStepId(step.id); drag.current = { id: step.id, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, x: position.x, y: position.y }; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { const active = drag.current; if (!active || active.id !== step.id || active.pointerId !== event.pointerId) return; moveNode(step.id, active.x + event.clientX - active.startX, active.y + event.clientY - active.startY); }} onPointerUp={(event) => { if (drag.current?.pointerId === event.pointerId) drag.current = null; event.currentTarget.releasePointerCapture(event.pointerId); }} aria-label={`${step.label}, ${step.method}, expect ${step.expectedStatus}`}>
-        <span className="flow-node-top"><span className={methodClass(step.method)}>{step.method}</span><span className="flow-node-index">{result?.status === 'passed' ? <Check size={13} /> : result?.status === 'failed' ? <X size={13} /> : index + 1}</span></span><strong>{step.label}</strong><code>{step.url}</code><span className="flow-node-bottom"><span>{step.extracts?.length ? step.extracts.map(({ key }) => `{{${key}}}`).join(' · ') : `Expect ${step.expectedStatus}`}</span><small>{result ? `${result.actualStatus} · ${result.durationMs} ms` : running ? 'Running…' : 'Ready'}</small></span>
+    <div className="flow-map-stage" style={{ width: viewport.width, height: viewport.height }}>
+      <svg className="flow-map-edges" width={viewport.width} height={viewport.height} aria-hidden="true"><defs><marker id="flow-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" /></marker></defs>{edges.map((edge, index) => { const from = byId.get(edge.from); const to = byId.get(edge.to); if (!from || !to) return null; const sourceResult = results.find((result) => result.id === edge.from); const running = isRunning && index === results.length - 1; const labelWidth = Math.min(156, Math.max(58, edge.label.length * 7 + 20)); const labelX = (from.x + FLOW_NODE_WIDTH + to.x) / 2; const labelY = Math.max(4, Math.min(from.y, to.y) - 28); return <g className={`flow-map-edge ${sourceResult?.status ?? (running ? 'running' : 'idle')}`} key={edge.id}><path d={flowEdgePath(from, to)} /><g className="flow-edge-label"><rect x={labelX - labelWidth / 2} y={labelY} width={labelWidth} height="22" rx="11" /><text x={labelX} y={labelY + 15}>{edge.label}</text></g></g>; })}</svg>
+      {steps.map((step, index) => { const position = byId.get(step.id); const storedPosition = storedById.get(step.id); if (!position || !storedPosition) return null; const result = results.find((candidate) => candidate.id === step.id); const running = isRunning && index === results.length; return <button className={`flow-node${selectedStepId === step.id ? ' selected' : ''}${result ? ` ${result.status}` : ''}${running ? ' running' : ''}`} type="button" style={{ transform: `translate(${position.x}px, ${position.y}px)` }} key={step.id} onClick={() => setSelectedStepId(step.id)} onPointerDown={(event) => { setSelectedStepId(step.id); drag.current = { id: step.id, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, x: storedPosition.x, y: storedPosition.y }; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { const active = drag.current; if (!active || active.id !== step.id || active.pointerId !== event.pointerId) return; moveNode(step.id, active.x + event.clientX - active.startX, active.y + event.clientY - active.startY); }} onPointerUp={(event) => { if (drag.current?.pointerId === event.pointerId) drag.current = null; event.currentTarget.releasePointerCapture(event.pointerId); }} aria-label={`${step.label}, ${step.method}, expect ${step.expectedStatus}`}>
+        <span className="flow-node-top"><span className={methodClass(step.method)}>{step.method}</span><span className="flow-node-index">{result?.status === 'passed' ? <Check size={13} /> : result?.status === 'failed' ? <X size={13} /> : index + 1}</span></span><strong>{step.label}</strong><code>{step.url}</code><span className="flow-node-bottom"><span>{step.extracts?.length ? step.extracts.map(({ key }) => `{{${key}}}`).join(' · ') : `Expect ${step.expectedStatus}`}</span><small className={result?.status === 'failed' ? 'node-status-error' : ''}>{result ? `${result.actualStatus} · ${result.status === 'failed' ? 'failed' : `${result.durationMs} ms`}` : running ? 'Running…' : 'Ready'}</small></span>
       </button>; })}
     </div>
   </section>;

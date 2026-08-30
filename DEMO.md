@@ -39,7 +39,7 @@ Ask the agent:
 
 ### 0:35–1:05 — Let the real failure happen
 
-Keep Runwire visible while the agent calls `get_journey` and `run_journey`.
+Keep Runwire visible. The Agent Trace opens automatically as the agent calls `get_journey`. When `run_journey` shows **Approval required**, click **Approve & run**, then switch the trace to **API flow**. Leave it open so the judge sees the WebMCP tool invoke each real API with human approval, response status, duration, and extracted-value edges.
 
 > Customer creation passes and its ID is injected into Create order. That request fails with a real 400: `MISSING_IDEMPOTENCY_KEY`. Runwire stops immediately instead of hiding or hallucinating past the error.
 
@@ -51,7 +51,11 @@ Ask the agent:
 
 > Diagnose the failed step, apply the available safe repair through WebMCP, and rerun the flow.
 
+The bounded repair applies immediately because it does not send network traffic. Approve the second `run_journey` request when it appears in the Agent Trace.
+
 > The repair is bounded: Runwire adds the generated `Idempotency-Key` header to the failing request. The same visible workflow is updated—there is no second agent-only copy.
+
+Point once to `apply_idempotency_repair` in the Agent Trace, then return attention to the changed workflow.
 
 ### 1:35–2:05 — Prove chaining and completion
 
@@ -70,7 +74,8 @@ End on the flow map with the Runwire name visible.
 ## Recording guardrails
 
 - Do not show setup, localhost, source code, or import screens.
-- Do not narrate every tool call; narrate the state transition.
+- Keep the Agent Trace visible, but narrate state transitions instead of reading every tool name aloud.
+- Approve only the two visible `run_journey` calls; do not pre-stage or hide the approval step.
 - Keep the failure response and the final `4/4` result readable.
 - If a request is slow, cut the wait rather than speeding up the whole recording.
 - Record one clean take under three minutes before adding captions or music.

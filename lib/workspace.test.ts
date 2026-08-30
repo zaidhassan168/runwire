@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyRequestAuth, isLocalRequestUrl, isRequestAuthConfigured, mergeEnvironmentVariables, protectSensitiveHeaders, resolveTemplate, withoutSensitiveHeaders, isSensitiveVariableKey } from './workspace.ts';
+import { agentToolOutputFailed, applyRequestAuth, isLocalRequestUrl, isRequestAuthConfigured, mergeEnvironmentVariables, protectSensitiveHeaders, requiresAgentApproval, resolveTemplate, summarizeAgentToolInput, withoutSensitiveHeaders, isSensitiveVariableKey } from './workspace.ts';
 
 test('resolves environment variables', () => {
   assert.equal(
@@ -56,6 +56,30 @@ test('protects credentials at save and agent boundaries', () => {
   assert.deepEqual(protectSensitiveHeaders(headers), [['Accept', 'application/json'], ['Authorization', '[protected]'], ['X-API-Key', '[protected]']]);
   assert.equal(isRequestAuthConfigured({ type: 'bearer', token: '' }), false);
   assert.equal(isRequestAuthConfigured({ type: 'basic', username: 'user', password: '' }), true);
+});
+
+test('summarizes visible tool calls without exposing request or environment secrets', () => {
+  assert.equal(
+    summarizeAgentToolInput('update_active_request', { method: 'POST', url: 'https://api.example.com/orders?token=secret&id=3', body: '{"secret":"hidden"}' }),
+    'POST · https://api.example.com/orders · 2 params · body 19 chars',
+  );
+  assert.equal(summarizeAgentToolInput('set_environment_variable', { key: 'API_TOKEN', value: 'secret' }), 'API_TOKEN · value protected');
+  assert.equal(summarizeAgentToolInput('run_journey', {}), 'No arguments');
+});
+
+test('requires human approval only for agent-triggered network execution', () => {
+  assert.equal(requiresAgentApproval('run_active_request'), true);
+  assert.equal(requiresAgentApproval('run_journey'), true);
+  assert.equal(requiresAgentApproval('run_controlled_burst'), true);
+  assert.equal(requiresAgentApproval('get_journey'), false);
+  assert.equal(requiresAgentApproval('apply_idempotency_repair'), false);
+});
+
+test('surfaces failed API evidence even when the WebMCP tool returns normally', () => {
+  assert.equal(agentToolOutputFailed('run_journey', { results: [{ status: 'passed' }, { status: 'failed' }] }), true);
+  assert.equal(agentToolOutputFailed('run_active_request', { response: { status: 404 } }), true);
+  assert.equal(agentToolOutputFailed('run_controlled_burst', { result: { errors: 0 } }), false);
+  assert.equal(agentToolOutputFailed('get_journey', { results: [{ status: 'failed' }] }), false);
 });
 
 test('only classifies single-slash paths as local requests', () => {
