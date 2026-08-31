@@ -45,7 +45,7 @@ export function flowEdgePath(from: JourneyNodePosition, to: JourneyNodePosition)
   const y1 = from.y + FLOW_NODE_HEIGHT / 2;
   const x2 = to.x;
   const y2 = to.y + FLOW_NODE_HEIGHT / 2;
-  const curve = Math.max(56, Math.abs(x2 - x1) * .45);
+  const curve = Math.max(24, Math.abs(x2 - x1) * .45);
   return `M ${x1} ${y1} C ${x1 + curve} ${y1}, ${x2 - curve} ${y2}, ${x2} ${y2}`;
 }
 
