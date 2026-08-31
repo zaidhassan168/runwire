@@ -6,7 +6,19 @@
 
 [2:35 judge demo script](DEMO.md)
 
+![Runwire executable API flow with visible WebMCP evidence](docs/screenshots/flow-workspace.png)
+
 Runwire combines a focused API client, executable multi-step flows, visible run evidence, and a WebMCP tool surface. A developer can edit and inspect requests in the UI while an agent selects flows, runs them, follows extracted values, diagnoses failures, applies safe repairs, and leaves every result visible on the same page.
+
+## Product evidence
+
+| Shared request workspace | Failure evidence |
+| --- | --- |
+| ![Runwire request editor, tests, response panel, and WebMCP trace](docs/screenshots/request-workspace.png) | ![Runwire stopped at the real missing idempotency key failure](docs/screenshots/run-history-failed.png) |
+
+| Repaired flow | Durable passing run |
+| --- | --- |
+| ![Runwire Checkout recovery completed four of four steps](docs/screenshots/flow-passed-4-of-4.png) | ![Runwire passing run history with every API result](docs/screenshots/run-history-passed.png) |
 
 ## Why WebMCP
 
@@ -64,7 +76,7 @@ Every invocation is also recorded in the visible Agent Trace. Request bodies, qu
 - Named environment variables with `{{variable}}` resolution.
 - Postman Collection v2.1 import and export.
 - Executable flows with JSON-path extraction and variable chaining.
-- Map and list views backed by the same flow model.
+- Canvas and Evidence views backed by the same flow model.
 - Per-step request, response, status, duration, and extraction evidence.
 - Live WebMCP Agent Trace with human approval, safe history, and an animated tool-to-API execution flow.
 - Bounded GET burst testing with success rate, p50, p95, and errors.
@@ -97,6 +109,7 @@ Validation:
 ```bash
 npm test
 npm run lint
+npm run typecheck
 npm run build
 ```
 
