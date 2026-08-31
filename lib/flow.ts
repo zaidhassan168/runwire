@@ -4,12 +4,13 @@ export type JourneyNodePosition = { id: string; x: number; y: number };
 export type JourneyFlowEdge = { id: string; from: string; to: string; label: string };
 export type JourneyViewport = { positions: JourneyNodePosition[]; width: number; height: number };
 
-export const FLOW_NODE_WIDTH = 196;
-export const FLOW_NODE_HEIGHT = 124;
+export const FLOW_NODE_WIDTH = 168;
+export const FLOW_NODE_HEIGHT = 116;
+const FLOW_NODE_GAP = 28;
 const FLOW_MIN_Y = 96;
 
 export function autoLayoutJourney(steps: JourneyStep[]): JourneyNodePosition[] {
-  return steps.map((step, index) => ({ id: step.id, x: 32 + index * 244, y: FLOW_MIN_Y }));
+  return steps.map((step, index) => ({ id: step.id, x: 32 + index * (FLOW_NODE_WIDTH + FLOW_NODE_GAP), y: FLOW_MIN_Y }));
 }
 
 export function normalizeJourneyPositions(steps: JourneyStep[], positions: JourneyNodePosition[] = []): JourneyNodePosition[] {
