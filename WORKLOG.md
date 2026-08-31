@@ -41,7 +41,7 @@ Make Runwire a production-grade, agent-native API workspace where a person or We
 - The workflow canvas grid was removed at the user's request; the canvas is now a quiet solid surface while connections, bindings, and node states remain visible.
 - Colored success, failure, and selection outlines were removed from workflow cards; status remains visible through icons, endpoint results, connector state, and failure evidence.
 - The bottom rail keeps the accessible Environment gear action but no longer renders its visible label.
-- Release audit confirms a 12-file public manifest that excludes `design/`, `design-qa.md`, and the ignored Devpost draft. The manifest has no secret-shaped values or private machine paths; GitHub auth is active, the repository is public, and local `main` is one commit ahead of `origin/main` before the uncommitted pass.
+- The audited 12-file release was committed as `b671004` and pushed to public `origin/main`; internal `design/`, `design-qa.md`, and the ignored Devpost draft remain local.
 
 ## Decisions
 
@@ -58,12 +58,12 @@ Make Runwire a production-grade, agent-native API workspace where a person or We
 
 - Live Repair Room and the single-header refinement are complete and verified locally.
 - Lint, TypeScript, `21/21` tests, production build, `git diff --check`, desktop/compact browser checks, and design QA pass.
-- The new product pass is intentionally uncommitted. Push and deployment remain unauthorized.
+- The new product pass is committed and pushed to `origin/main`. Deployment remains unauthorized.
 
 ## Blockers
 
-- Committing the audited public manifest, pushing `main`, and deploying to Sites require explicit approval.
+- Deploying the pushed build to Sites requires explicit approval.
 
 ## Next action
 
-Keep the local failure state open for user inspection. On explicit authorization, commit the release candidate; only then push and deploy to Sites, repeat the live WebMCP failure → repair → passing rerun proof, and refresh demo evidence.
+Keep the local failure state open for user inspection. On explicit authorization, deploy the pushed build to Sites, repeat the live WebMCP failure → repair → passing rerun proof, and refresh demo evidence.
