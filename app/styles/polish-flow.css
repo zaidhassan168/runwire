@@ -1,0 +1,440 @@
+/* Flows / Live Repair Room */
+.flow-command-bar {
+  align-items: center;
+  gap: 24px;
+  padding: 17px 22px 15px;
+}
+
+.flow-title-line {
+  gap: 10px;
+}
+
+.flow-title-line h1 {
+  margin-top: 2px;
+  font-size: 22px;
+  letter-spacing: -0.035em;
+}
+
+.flow-state {
+  margin-top: 2px;
+  font-size: 10px;
+}
+
+.flow-command-bar .screen-subtitle {
+  margin-top: 5px;
+  font-size: 11px;
+}
+
+.flow-meta-line {
+  margin-top: 10px;
+  font-size: 9px;
+}
+
+.flow-meta-line span {
+  padding-inline: 10px;
+}
+
+.flow-run-button {
+  min-width: 112px;
+  min-height: 38px;
+  padding-inline: 14px;
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.flow-workbench {
+  grid-template-rows: 43px minmax(0, 1fr) 50px;
+  margin: 10px;
+  border-color: var(--line-strong);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.flow-workbench.has-failure-evidence {
+  grid-template-rows: 43px minmax(170px, 1fr) minmax(188px, auto) 50px;
+}
+
+.flow-toolbar {
+  min-height: 43px;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  padding: 0 10px;
+  background: #fcfcfd;
+}
+
+.flow-toolbar .segmented {
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f2f4f7;
+}
+
+.flow-toolbar .segmented button {
+  min-width: 62px;
+  padding: 5px 9px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.flow-toolbar-context {
+  font-size: 10px;
+}
+
+.flow-toolbar .button {
+  min-height: 30px;
+}
+
+.flow-map {
+  min-height: 0;
+  background: #f6f7f9;
+  background-image: none;
+}
+
+.flow-map-edge path {
+  stroke: #98a2b3;
+  stroke-width: 1.5;
+}
+
+.flow-edge-label rect {
+  fill: #ffffff;
+  stroke: #d0d5dd;
+}
+
+.flow-map-edge text {
+  fill: #475467;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.flow-node {
+  width: 168px;
+  height: 116px;
+  gap: 8px;
+  padding: 13px 14px 12px;
+  overflow: hidden;
+  border-color: #d0d5dd;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgba(16, 24, 40, 0.05);
+}
+
+.flow-node:hover {
+  border-color: #98a2b3;
+  box-shadow: 0 5px 14px rgba(16, 24, 40, 0.09);
+}
+
+.flow-node.selected {
+  border-color: #84a0ef;
+  box-shadow: 0 0 0 2px rgba(49, 91, 215, 0.11), 0 3px 10px rgba(16, 24, 40, 0.06);
+}
+
+.flow-node.passed {
+  border-color: #a6d8c5;
+  background: #fbfffd;
+}
+
+.flow-node.failed {
+  border-color: #f0aaa3;
+  background: #fffafa;
+  box-shadow: 0 0 0 2px rgba(180, 35, 24, 0.08);
+}
+
+.flow-node.passed::before,
+.flow-node.failed::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: block;
+  width: 3px;
+  height: auto;
+  border-radius: 8px 0 0 8px;
+  content: '';
+}
+
+.flow-node.passed::before {
+  background: var(--green);
+}
+
+.flow-node.failed::before {
+  background: var(--red);
+}
+
+.flow-node-top .method {
+  font-size: 10px;
+}
+
+.flow-node-index {
+  width: 21px;
+  height: 21px;
+  font-size: 9px;
+}
+
+.flow-node > strong {
+  font-size: 13px;
+}
+
+.flow-node > code,
+.flow-node-bottom {
+  font-size: 9px;
+}
+
+.flow-node-bottom {
+  padding-top: 7px;
+}
+
+.journey-footer {
+  min-height: 50px;
+  padding: 8px 12px 8px 14px;
+  background: #ffffff;
+}
+
+.journey-footer strong {
+  font-size: 11px;
+}
+
+.journey-footer code,
+.journey-footer small,
+.flow-footer-progress,
+.flow-footer-open,
+.flow-footer-action {
+  font-size: 9px;
+}
+
+.journey-footer.failed {
+  border-top-color: #f1b4ae;
+  background: #fffafa;
+}
+
+.journey-footer.passed {
+  background: #f8fdfb;
+}
+
+.flow-footer-action {
+  min-height: 32px;
+  border-radius: 6px;
+}
+
+.failure-evidence {
+  min-height: 188px;
+  border-top: 2px solid #f1b4ae;
+  background: #ffffff;
+}
+
+.failure-evidence-header {
+  min-height: 40px;
+  padding: 0 13px;
+}
+
+.failure-step-label {
+  gap: 8px;
+}
+
+.failure-step-label > span {
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 9px;
+}
+
+.failure-step-label strong {
+  font-size: 11px;
+}
+
+.failure-evidence-tabs {
+  gap: 17px;
+}
+
+.failure-evidence-tabs button {
+  font-size: 10px;
+}
+
+.failure-request-line {
+  min-height: 36px;
+  grid-template-columns: 46px minmax(0, 1fr) auto auto;
+  padding: 0 13px;
+  background: #fcfcfd;
+}
+
+.failure-request-line > code,
+.failure-request-line small,
+.failure-http-status {
+  font-size: 9px;
+}
+
+.failure-http-status {
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+
+.failure-evidence-grid {
+  min-height: 110px;
+}
+
+.failure-evidence-grid > section {
+  padding: 10px 13px;
+}
+
+.failure-evidence h3,
+.evidence-kv span,
+.evidence-kv code,
+.failure-evidence pre {
+  font-size: 9px;
+}
+
+/* Inspector and repair approval */
+.inspector .panel-title-row {
+  min-height: 56px;
+  border-bottom-color: var(--line);
+  background: rgba(255, 255, 255, 0.97);
+}
+
+.repair-waiting {
+  padding: 4px 6px;
+  border: 1px solid #fedf89;
+  border-radius: 5px;
+  background: var(--amber-soft);
+  font-size: 10px;
+}
+
+.inspector-content {
+  padding: 0 14px 20px;
+}
+
+.inspector-content section {
+  padding: 14px 0;
+}
+
+.inspector-content h3 {
+  font-size: 11px;
+}
+
+.inspector-content .step-title {
+  font-size: 14px;
+}
+
+.inspector-stat,
+.inspector-kv {
+  min-height: 34px;
+}
+
+.inspector-kv span,
+.inspector-stat span,
+.inspector-stat strong,
+.endpoint-code,
+.muted-copy {
+  font-size: 10px;
+}
+
+.note-card,
+.agent-note {
+  border-radius: 6px;
+  background: #f8faff;
+  font-size: 10px;
+}
+
+.repair-session {
+  min-height: calc(100% - 56px);
+  padding: 14px 15px 18px;
+  background: #ffffff;
+}
+
+.repair-agent {
+  min-height: 36px;
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--line);
+}
+
+.repair-agent strong,
+.repair-agent small {
+  font-size: 10px;
+}
+
+.repair-diagnosis {
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #f1b4ae;
+  border-radius: 7px;
+  background: #fffafa;
+}
+
+.repair-diagnosis strong {
+  font-size: 13px;
+}
+
+.repair-diagnosis p,
+.repair-diagnosis code,
+.repair-proposal > p,
+.repair-rationale p {
+  font-size: 11px;
+}
+
+.repair-proposal {
+  padding-top: 15px;
+}
+
+.repair-proposal h3,
+.repair-rationale span {
+  font-size: 12px;
+}
+
+.repair-compare {
+  grid-template-columns: 1fr;
+  border-radius: 7px;
+}
+
+.repair-compare > div {
+  gap: 6px;
+  padding: 10px;
+}
+
+.repair-compare > div + div {
+  border-top: 1px solid var(--line);
+  border-left: 0;
+}
+
+.repair-compare span,
+.repair-compare code,
+.repair-generated span,
+.repair-generated code,
+.repair-rationale small {
+  font-size: 10px;
+}
+
+.repair-compare code {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.repair-generated {
+  margin-top: 10px;
+}
+
+.repair-generated code {
+  padding: 8px 9px;
+  border-radius: 6px;
+}
+
+.repair-rationale {
+  margin-top: 14px;
+  padding-top: 12px;
+}
+
+.repair-actions {
+  position: sticky;
+  bottom: -18px;
+  z-index: 2;
+  grid-template-columns: 0.75fr 1.25fr;
+  margin: auto -15px -18px;
+  padding: 14px 15px 18px;
+  border-top: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.repair-actions .button {
+  min-height: 38px;
+}
+
+.repair-actions > small {
+  font-size: 9px;
+}
