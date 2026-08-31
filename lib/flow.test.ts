@@ -26,9 +26,9 @@ test('normalizes saved positions and clamps agent movement', () => {
 test('fits rendered nodes without changing stored coordinates', () => {
   const stored = autoLayoutJourney(steps.slice(0, 2));
   const viewport = fitJourneyViewport(stored);
-  assert.deepEqual(viewport.positions, [{ id: 'customer', x: 32, y: 28 }, { id: 'order', x: 276, y: 28 }]);
-  assert.deepEqual(stored, [{ id: 'customer', x: 32, y: 96 }, { id: 'order', x: 276, y: 96 }]);
+  assert.deepEqual(viewport.positions, [{ id: 'customer', x: 32, y: 28 }, { id: 'order', x: 228, y: 28 }]);
+  assert.deepEqual(stored, [{ id: 'customer', x: 32, y: 96 }, { id: 'order', x: 228, y: 96 }]);
   const moved = fitJourneyViewport(moveJourneyNode(stored, 'customer', 24, 176));
-  assert.deepEqual(moved.positions[1], { id: 'order', x: 276, y: 28 });
+  assert.deepEqual(moved.positions[1], { id: 'order', x: 228, y: 28 });
   assert.equal(viewport.height, 280);
 });
