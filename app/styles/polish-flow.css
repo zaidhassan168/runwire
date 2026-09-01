@@ -129,35 +129,14 @@
 }
 
 .flow-node.passed {
-  border-color: #a6d8c5;
+  border-color: var(--line-strong);
   background: #fbfffd;
 }
 
 .flow-node.failed {
-  border-color: #f0aaa3;
+  border-color: var(--line-strong);
   background: #fffafa;
-  box-shadow: 0 0 0 2px rgba(180, 35, 24, 0.08);
-}
-
-.flow-node.passed::before,
-.flow-node.failed::before {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  display: block;
-  width: 3px;
-  height: auto;
-  border-radius: 8px 0 0 8px;
-  content: '';
-}
-
-.flow-node.passed::before {
-  background: var(--green);
-}
-
-.flow-node.failed::before {
-  background: var(--red);
+  box-shadow: 0 6px 18px rgba(24, 32, 44, 0.08);
 }
 
 .flow-node-top .method {

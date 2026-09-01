@@ -17,9 +17,9 @@ Make Runwire a production-grade, agent-native API workspace where a person or We
 - `21/21` tests, lint, build, diff check, and unauthenticated HTTP boundary checks pass.
 - A local WebMCP Agent Trace now exposes safe tool intent, running/passed/failed state, duration, and recent history across every screen.
 - The collapsed and expanded trace layouts were verified at 1280×720; trace redaction is covered by the 18th test.
-- Agent-triggered request, flow, and burst execution now pauses in the trace for explicit human approval; read-only and bounded repair tools remain immediate.
+- Agent-triggered request, flow, and burst execution now runs directly; the obsolete approval gate and its UI have been removed.
 - The trace now toggles between safe tool-call history and an animated `run_journey → API requests` flow with methods, endpoints, bindings, response codes, and durations.
-- A 1280×720 Chromium runtime proof verified expand/collapse, the API-flow toggle, clickable API nodes, approval, denial, approved execution, and truthful red failure state for a returned HTTP 400.
+- A 1280×720 Chromium runtime proof verified expand/collapse, the API-flow toggle, clickable API nodes, and truthful red failure state for a returned HTTP 400.
 - The Flow screen now uses one command bar and one dominant canvas, with clearer execution state, readable binding capsules, compact nodes, and an actionable failure footer that opens the exact failed-node repair.
 - The Request screen now uses a full-height editor/response split, and short Agent Trace histories stay compact instead of consuming the workspace.
 - The orphaned collapsed-navigator button was removed; Requests, Flows, and Runs now open or collapse their navigator directly from the left rail.
@@ -33,10 +33,11 @@ Make Runwire a production-grade, agent-native API workspace where a person or We
 - The README now leads with current-build Canvas and Requests screenshots; five portable `1280 × 720` judge screenshots live under `docs/screenshots/` instead of private visualization paths.
 - `DEMO.md` and the ignored Devpost draft now use the real Canvas/Evidence labels. The spoken script is 206 words (about 1:47 at 115 wpm) inside the 2:35 shot plan.
 - Submission-readiness verification confirms every screenshot link exists, tracked docs contain no private absolute paths, the live Site and public GitHub repository return HTTP 200, and lint, typecheck, `21/21` tests, build, and diff checks pass.
-- The user selected the shared Live Repair Room direction. It now turns a real failed flow into visible request/response evidence, a bounded diff, human approval, and a real passing rerun.
-- The duplicate host/presence and Agent Trace header rows were collapsed into one 62 px header. Trace history and approvals now open as an anchored dropdown instead of consuming permanent workspace height.
-- Browser proof passed at `1440 x 1024` and `760 x 900`: failure evidence tabs, repair approval, `4/4` rerun, responsive header, and clean console.
+- The user selected the shared Live Repair Room direction. It now turns a real failed flow into visible request/response evidence, a bounded repair, and a real passing rerun.
+- The duplicate host/presence and Agent Trace header rows were collapsed into one 62 px header. Trace history opens as an anchored dropdown instead of consuming permanent workspace height.
+- Browser proof passed at `1440 x 1024` and `760 x 900`: failure evidence tabs, bounded repair, `4/4` rerun, responsive header, and clean console.
 - WebMCP proof read the repaired journey and failed/passed run history and matched the visible UI state.
+- A WebMCP-only replay built Ticket lifecycle from an empty draft, configured its environment, parameters, headers, bodies, and extraction, then ran each request separately. It passed `201 -> 200 -> 200`, reused extracted `ticketId=tkt_53a3600b`, showed 20 trace calls, and used no ordinary UI clicks.
 - Live Repair Room design QA passed; evidence is in `design/live-repair-room-failure-single-header.png`, `design/qa-live-repair-room-comparison.png`, and `design-qa.md`.
 - The workflow canvas grid was removed at the user's request; the canvas is now a quiet solid surface while connections, bindings, and node states remain visible.
 - Colored success, failure, and selection outlines were removed from workflow cards; status remains visible through icons, endpoint results, connector state, and failure evidence.
@@ -56,14 +57,15 @@ Make Runwire a production-grade, agent-native API workspace where a person or We
 
 ## Current work
 
-- Live Repair Room and the single-header refinement are complete and verified locally.
-- Lint, TypeScript, `21/21` tests, production build, `git diff --check`, desktop/compact browser checks, and design QA pass.
-- The new product pass is committed and pushed to `origin/main`. Deployment remains unauthorized.
+- Granular flow composition and step execution are complete and verified locally through Runwire's page-defined WebMCP tools.
+- TypeScript, lint, `21/21` tests, production build, and `git diff --check` pass.
+- These granular WebMCP changes are local and uncommitted; the previously audited product pass remains on `origin/main`.
+- README, demo script, Devpost draft, and local hackathon state now describe the current 22-tool surface and direct trace-visible execution.
 
 ## Blockers
 
-- Deploying the pushed build to Sites requires explicit approval.
+- Public YouTube demo recording remains outstanding.
 
 ## Next action
 
-Keep the local failure state open for user inspection. On explicit authorization, deploy the pushed build to Sites, repeat the live WebMCP failure → repair → passing rerun proof, and refresh demo evidence.
+Commit the verified tracked changes, publish them to `origin/main`, deploy that exact commit to Sites, and repeat the WebMCP proof on the live URL.

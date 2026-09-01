@@ -340,7 +340,6 @@ textarea:focus-visible {
 .rail-button.active {
   background: #eef2ff;
   color: var(--blue);
-  box-shadow: inset 3px 0 0 var(--blue);
 }
 
 .navigator,
@@ -420,7 +419,6 @@ textarea:focus-visible {
 
 .request-item.active {
   background: #eef2ff;
-  box-shadow: inset 2px 0 0 var(--blue);
 }
 
 .navigator-actions {
@@ -440,7 +438,6 @@ textarea:focus-visible {
 .run-list-item.active {
   border-color: transparent;
   background: #eef2ff;
-  box-shadow: inset 2px 0 0 var(--blue);
 }
 
 .journey-icon {
@@ -596,8 +593,13 @@ textarea:focus-visible {
 }
 
 .auth-note {
-  border-left-width: 2px;
+  border-left: 0;
   font-size: 9px;
+}
+
+.agent-trace-row.failed,
+.agent-trace-row.denied {
+  box-shadow: none;
 }
 
 .request-screen .response-card {

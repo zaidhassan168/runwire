@@ -109,6 +109,7 @@
 }
 
 .security-note {
+  border-left: 0;
   font-size: 9px;
 }
 

@@ -31,7 +31,7 @@ Show the Checkout recovery canvas and point to the `customerId` and `orderId` bi
 
 ### 0:15–0:35 — Establish why WebMCP matters
 
-> The agent is not clicking through a reconstructed interface. Runwire exposes 15 page-defined WebMCP tools that operate on the same flow and run evidence I can see.
+> The agent is not clicking through a reconstructed interface. Runwire exposes 22 page-defined WebMCP tools that operate on the same flow and run evidence I can see.
 
 Ask the agent:
 
@@ -39,7 +39,7 @@ Ask the agent:
 
 ### 0:35–1:05 — Let the real failure happen
 
-Keep Runwire visible. The Agent Trace opens automatically as the agent calls `get_journey`. When `run_journey` shows **Approval required**, click **Approve & run**, then switch the trace to **API flow**. Leave it open so the judge sees the WebMCP tool invoke each real API with human approval, response status, duration, and extracted-value edges.
+Keep Runwire visible. The Agent Trace opens automatically as the agent calls `get_journey`, then shows `run_journey` invoking each real API with response status, duration, and extracted-value edges. No browser-control clicks are used for the agent actions.
 
 > Customer creation passes and its ID is injected into Create order. That request fails with a real 400: `MISSING_IDEMPOTENCY_KEY`. Runwire stops immediately instead of hiding or hallucinating past the error.
 
@@ -49,9 +49,9 @@ Switch to **Evidence** briefly and expand Create order to show the request and r
 
 Ask the agent:
 
-> Diagnose the failed step, apply the available safe repair through WebMCP, and rerun the flow.
+> Diagnose the failed step, apply the available safe repair through WebMCP, then rerun Create customer, Create order, Get order, and Delete order one request at a time.
 
-The bounded repair applies immediately because it does not send network traffic. Approve the second `run_journey` request when it appears in the Agent Trace.
+The bounded repair applies immediately because it does not send network traffic. Leave the Agent Trace open while each `run_flow_step` call appears separately.
 
 > The repair is bounded: Runwire adds the generated `Idempotency-Key` header to the failing request. The same visible workflow is updated—there is no second agent-only copy.
 
@@ -75,7 +75,7 @@ End on the flow canvas with the Runwire name visible.
 
 - Do not show setup, localhost, source code, or import screens.
 - Keep the Agent Trace visible, but narrate state transitions instead of reading every tool name aloud.
-- Approve only the two visible `run_journey` calls; do not pre-stage or hide the approval step.
+- Keep the first `run_journey`, the repair, and the four granular `run_flow_step` calls visible in Agent Trace.
 - Keep the failure response and the final `4/4` result readable.
 - If a request is slow, cut the wait rather than speeding up the whole recording.
 - Record one clean take under three minutes before adding captions or music.

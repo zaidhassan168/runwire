@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { agentToolOutputFailed, applyRequestAuth, isLocalRequestUrl, isRequestAuthConfigured, mergeEnvironmentVariables, protectSensitiveHeaders, requiresAgentApproval, resolveTemplate, summarizeAgentToolInput, withoutSensitiveHeaders, isSensitiveVariableKey } from './workspace.ts';
+import { agentToolOutputFailed, applyRequestAuth, isLocalRequestUrl, isRequestAuthConfigured, mergeEnvironmentVariables, protectSensitiveHeaders, resolveTemplate, setRawQueryParameter, summarizeAgentToolInput, withoutSensitiveHeaders, isSensitiveVariableKey } from './workspace.ts';
 
 test('resolves environment variables', () => {
   assert.equal(
@@ -67,17 +67,18 @@ test('summarizes visible tool calls without exposing request or environment secr
   assert.equal(summarizeAgentToolInput('run_journey', {}), 'No arguments');
 });
 
-test('requires human approval only for agent-triggered network execution', () => {
-  assert.equal(requiresAgentApproval('run_active_request'), true);
-  assert.equal(requiresAgentApproval('run_journey'), true);
-  assert.equal(requiresAgentApproval('run_controlled_burst'), true);
-  assert.equal(requiresAgentApproval('get_journey'), false);
-  assert.equal(requiresAgentApproval('apply_idempotency_repair'), false);
+test('sets query parameters without encoding Runwire variables', () => {
+  assert.equal(
+    setRawQueryParameter('{{baseUrl}}/orders?action=get', 'id', '{{orderId}}'),
+    '{{baseUrl}}/orders?action=get&id={{orderId}}',
+  );
+  assert.equal(setRawQueryParameter('/orders?id=old#result', 'id', 'new'), '/orders?id=new#result');
 });
 
 test('surfaces failed API evidence even when the WebMCP tool returns normally', () => {
   assert.equal(agentToolOutputFailed('run_journey', { results: [{ status: 'passed' }, { status: 'failed' }] }), true);
   assert.equal(agentToolOutputFailed('run_active_request', { response: { status: 404 } }), true);
+  assert.equal(agentToolOutputFailed('run_flow_step', { result: { status: 'failed' } }), true);
   assert.equal(agentToolOutputFailed('run_controlled_burst', { result: { errors: 0 } }), false);
   assert.equal(agentToolOutputFailed('get_journey', { results: [{ status: 'failed' }] }), false);
 });
